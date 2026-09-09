@@ -1,0 +1,12 @@
+# Local state — never commit any of this.
+etc/providers.json
+etc/model-catalog.json
+etc/created-profiles.txt
+etc/last-gpt-model.txt
+etc/original-default-model.txt
+etc/*.bak
+logs/
+backups/
+*.pyc
+__pycache__/
+.DS_Store

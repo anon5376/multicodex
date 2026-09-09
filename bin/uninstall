@@ -1,0 +1,64 @@
+#!/bin/bash
+# Remove everything this setup added and put Codex back exactly as it was.
+# Nothing here touches any login: no credential is read, moved, or deleted.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CFG="$HOME/.codex/config.toml"
+DRY=0
+[ "${1:-}" = "--dry-run" ] && DRY=1
+
+say() { [ $DRY -eq 1 ] && echo "would: $*" || echo "$*"; }
+run() { [ $DRY -eq 1 ] || eval "$@"; }
+
+echo "== Codex subscription bridge — uninstall =="
+[ $DRY -eq 1 ] && echo "(dry run: nothing will change)"
+echo
+
+# 1. back to stock config first, so Codex is never left half-configured
+say "restore Codex to GPT mode (stock default model + provider)"
+run "python3 '$ROOT/bin/set-mode.py' gpt >/dev/null"
+
+# 2. stop the service and any autostart
+say "stop the bridge and disable autostart"
+run "'$ROOT/bin/bridgectl' disable-autostart >/dev/null 2>&1"
+run "'$ROOT/bin/bridgectl' stop >/dev/null 2>&1"
+
+# 3. strip our config blocks entirely
+say "remove the config.toml blocks we added"
+run "python3 - <<'EOF'
+import re
+p = '$CFG'
+s = open(p).read()
+for b, e in [
+    ('# ---- BEGIN codex-subscription-bridge root keys (safe to delete) ----',
+     '# ---- END codex-subscription-bridge root keys ----'),
+    ('# ---- BEGIN codex-subscription-bridge provider (safe to delete) ----',
+     '# ---- END codex-subscription-bridge provider ----'),
+    ('# ---- BEGIN codex-subscription-bridge (added by setup; safe to delete) ----',
+     '# ---- END codex-subscription-bridge ----'),
+]:
+    s = re.sub(re.escape(b) + r'.*?' + re.escape(e) + r'\n?', '', s, flags=re.S)
+s = re.sub(r'\n{4,}', '\n\n\n', s)
+open(p, 'w').write(s)
+EOF"
+
+# 4. remove only the profile files we created (recorded at install time)
+if [ -f "$ROOT/etc/created-profiles.txt" ]; then
+  while read -r slug; do
+    [ -n "$slug" ] || continue
+    f="$HOME/.codex/$slug.config.toml"
+    [ -f "$f" ] && { say "remove profile $slug.config.toml"; run "rm -f '$f'"; }
+  done < "$ROOT/etc/created-profiles.txt"
+fi
+[ -f "$HOME/.codex/gpt-native.config.toml" ] && {
+  say "remove profile gpt-native.config.toml"; run "rm -f '$HOME/.codex/gpt-native.config.toml'"; }
+
+echo
+echo "Verify config.toml still parses:"
+if [ $DRY -eq 0 ]; then
+  codex doctor 2>&1 | grep -E 'config |model  ' | head -3
+fi
+echo
+echo "The bridge directory itself is left in place (backups live in $ROOT/backups)."
+echo "Delete it when you're happy:   rm -rf '$ROOT'"
+echo "Original config backup:        $ROOT/backups/\$(cat '$ROOT/backups/LATEST')/config.toml"

@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model bridge</title>
+<style>
+:root {
+  color-scheme: dark;
+
+  --canvas: #191919;
+  --sidebar: #171717;
+
+  --surface-1: #1e1e1e;
+  --surface-2: #232323;
+  --surface-3: #282828;
+  --surface-hover: #2c2c2c;
+  --surface-active: #313131;
+
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --text-primary: #f2f2f2;
+  --text-secondary: #a6a6a6;
+  --text-tertiary: #767676;
+  --text-disabled: #5c5c5c;
+  --text-inverse: #191919;
+
+  --primary: #ededed;
+  --primary-hover: #ffffff;
+  --primary-pressed: #d8d8d8;
+
+  --link: #b3c4ff;
+  --focus: #8da5ff;
+
+  --success: #75b78b;
+  --success-muted: rgba(117, 183, 139, 0.12);
+  --warning: #d1a15f;
+  --warning-muted: rgba(209, 161, 95, 0.12);
+  --danger: #dc7e7e;
+  --danger-muted: rgba(220, 126, 126, 0.12);
+  --info: #7ea8d8;
+  --info-muted: rgba(126, 168, 216, 0.12);
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  --duration-fast: 80ms;
+  --duration-default: 140ms;
+  --duration-overlay: 180ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text-primary);
+  font: 400 13px/20px var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------------------------------------------------------------- shell */
+.shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border-subtle);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px 16px; }
+.brand-mark {
+  width: 24px; height: 24px; flex: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  display: grid; place-items: center;
+  color: var(--text-secondary);
+}
+.brand-name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+
+.nav-group {
+  font-size: 11px; line-height: 16px; font-weight: 500;
+  color: var(--text-tertiary);
+  padding: 12px 8px 4px;
+}
+
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 8px;
+  border-radius: var(--radius-md);
+  border: none; background: none; width: 100%;
+  color: var(--text-secondary);
+  font: 500 13px/16px var(--font-sans);
+  text-align: left; cursor: pointer;
+  transition: background var(--duration-default) var(--ease-out),
+              color var(--duration-default) var(--ease-out);
+}
+.nav-item:hover { background: var(--surface-hover); color: var(--text-primary); }
+.nav-item[aria-current="page"] { background: var(--surface-active); color: var(--text-primary); }
+.nav-item svg { flex: none; }
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 12px 8px 4px;
+  border-top: 1px solid var(--border-subtle);
+  font: 400 11px/16px var(--font-mono);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- main */
+.main { flex: 1; min-width: 0; padding: 0 32px 64px; max-width: 1440px; }
+
+.page-head {
+  height: 60px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 24px;
+  position: sticky; top: 0; z-index: 4;
+  background: var(--canvas);
+}
+h1 { font: 600 24px/30px var(--font-sans); letter-spacing: -0.01em; margin: 0; }
+.page-sub { color: var(--text-secondary); margin: 0 0 20px; max-width: 720px; }
+
+.view[hidden] { display: none; }
+
+/* --------------------------------------------------------------- pieces */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font: 500 11px/16px var(--font-sans);
+  background: var(--surface-2); color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.badge.ok   { background: var(--success-muted); color: var(--success); border-color: transparent; }
+.badge.warn { background: var(--warning-muted); color: var(--warning); border-color: transparent; }
+.badge.bad  { background: var(--danger-muted);  color: var(--danger);  border-color: transparent; }
+.badge.info { background: var(--info-muted);    color: var(--info);    border-color: transparent; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+
+button {
+  font: 500 13px/16px var(--font-sans);
+  height: 32px; padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background var(--duration-default) var(--ease-out),
+              border-color var(--duration-default) var(--ease-out);
+}
+button:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
+button:active:not(:disabled) { background: var(--surface-active); }
+button:disabled { color: var(--text-disabled); cursor: default; }
+
+button.primary {
+  background: var(--primary); color: var(--text-inverse);
+  border-color: transparent; font-weight: 600;
+}
+button.primary:hover:not(:disabled) { background: var(--primary-hover); }
+button.primary:active:not(:disabled) { background: var(--primary-pressed); }
+button.primary:disabled { background: var(--surface-3); color: var(--text-disabled); }
+
+button.ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
+button.ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-primary); }
+button.xs { height: 28px; padding: 0 10px; font-size: 12px; }
+
+input[type="search"], select {
+  height: 34px; padding: 0 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: 400 13px/20px var(--font-sans);
+  transition: border-color var(--duration-default) var(--ease-out);
+}
+input[type="search"]::placeholder { color: var(--text-tertiary); }
+input[type="search"]:hover, select:hover { border-color: var(--border-strong); }
+
+input[type="checkbox"] {
+  appearance: none; width: 16px; height: 16px; flex: none; margin: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface-1); cursor: pointer; position: relative;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+input[type="checkbox"]:checked { background: var(--primary); border-color: var(--primary); }
+input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 4px; top: 1px;
+  width: 4px; height: 8px;
+  border: solid var(--text-inverse); border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.toolbar input[type="search"] { flex: 1; min-width: 200px; }
+.spacer { flex: 1; }
+
+.panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.panel-head {
+  display: flex; align-items: center; gap: 8px;
+  height: 44px; padding: 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.panel-head h2 { font: 600 14px/20px var(--font-sans); margin: 0; }
+.panel-body { padding: 16px; }
+
+.row {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 44px; padding: 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.row:last-child { border-bottom: none; }
+.row:hover { background: var(--surface-hover); }
+.row.unavailable .row-name { color: var(--text-disabled); }
+.row.unavailable .row-meta { color: var(--text-disabled); }
+.row-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
+.row-name { font-size: 13px; }
+.row-meta {
+  font: 400 11px/16px var(--font-mono);
+  color: var(--text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row-efforts { display: flex; gap: 4px; flex: none; }
+.pill {
+  font: 500 11px/16px var(--font-mono);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+.result {
+  font: 500 12px/16px var(--font-sans);
+  color: var(--text-tertiary);
+  min-width: 64px; text-align: right; flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.result.ok { color: var(--success); }
+.result.bad { color: var(--danger); }
+
+.note {
+  display: flex; gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  color: var(--text-secondary);
+}
+.note svg { flex: none; color: var(--warning); margin-top: 2px; }
+.note strong { color: var(--text-primary); font-weight: 600; }
+
+code, .mono { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+
+pre.out {
+  margin: 0; padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font: 400 12px/18px var(--font-mono);
+  color: var(--text-secondary);
+  white-space: pre-wrap; max-height: 260px; overflow: auto;
+}
+
+.segmented {
+  display: inline-flex; background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); padding: 2px; gap: 2px;
+}
+.segmented button { height: 26px; border: none; background: transparent; color: var(--text-secondary); font-size: 12px; border-radius: var(--radius-sm); }
+.segmented button[aria-pressed="true"] { background: var(--surface-active); color: var(--text-primary); }
+
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.track { width: 40px; height: 22px; border-radius: var(--radius-pill);
+         background: var(--surface-3); border: 1px solid var(--border-default);
+         position: relative; transition: background var(--duration-default) var(--ease-out); }
+.track::after { content: ""; position: absolute; top: 2px; left: 2px;
+                width: 16px; height: 16px; border-radius: 50%; background: var(--text-secondary);
+                transition: transform var(--duration-default) var(--ease-out),
+                            background var(--duration-default) var(--ease-out); }
+.switch input:checked + .track { background: var(--success-muted); border-color: var(--success); }
+.switch input:checked + .track::after { transform: translateX(18px); background: var(--success); }
+.switch input:focus-visible + .track { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch input:disabled + .track { opacity: .5; }
+
+.meter { height: 6px; border-radius: var(--radius-pill); background: var(--surface-3); overflow: hidden; min-width: 120px; flex: 1; max-width: 260px; }
+.meter > i { display: block; height: 100%; background: var(--chart-blue, #7f9fd4); border-radius: var(--radius-pill); }
+.meter > i.warn { background: var(--warning); }
+.meter > i.bad { background: var(--danger); }
+.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.kv { display: flex; gap: 16px; flex-wrap: wrap; }
+.kv div { min-width: 120px; }
+.kv dt { font-size: 11px; line-height: 16px; color: var(--text-tertiary); }
+.kv dd { margin: 2px 0 0; font-size: 15px; font-variant-numeric: tabular-nums; }
+
+.empty { padding: 32px 16px; text-align: center; color: var(--text-tertiary); }
+
+.field { display: flex; align-items: center; gap: 8px; }
+.field label { font: 500 13px/16px var(--font-sans); color: var(--text-secondary); }
+
+#toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(6px);
+  background: var(--surface-3); color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 10px 14px; font-size: 13px; max-width: min(560px, 90vw);
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--duration-overlay) var(--ease-out),
+              transform var(--duration-overlay) var(--ease-out);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  z-index: 20;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 1199px) {
+  .sidebar { width: 56px; flex-basis: 56px; align-items: center; padding: 16px 8px; }
+  .brand-name, .nav-item span, .nav-group, .sidebar-foot { display: none; }
+  .nav-item { justify-content: center; padding: 0; }
+}
+@media (max-width: 767px) {
+  .sidebar { display: none; }
+  .main { padding: 0 16px 48px; }
+  .row { flex-wrap: wrap; padding: 8px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar" aria-label="Sections">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+      </span>
+      <span class="brand-name">Model bridge</span>
+    </div>
+
+    <div class="nav-group">Configure</div>
+    <button class="nav-item" data-view="models" aria-current="page">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/></svg>
+      <span>Models</span>
+    </button>
+    <button class="nav-item" data-view="mode">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      <span>Codex app</span>
+    </button>
+
+    <button class="nav-item" data-view="usage">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>Usage</span>
+    </button>
+
+    <div class="nav-group">Diagnose</div>
+    <button class="nav-item" data-view="service">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span>Service</span>
+    </button>
+
+    <div class="sidebar-foot" id="foot">…</div>
+  </nav>
+
+  <main class="main">
+    <header class="page-head">
+      <h1 id="page-title">Models</h1>
+      <div class="spacer"></div>
+      <span class="badge" id="status-badge"><span class="dot"></span><span id="status-text">checking</span></span>
+      <span class="badge" id="mode-badge">mode</span>
+    </header>
+
+    <section class="view" id="view-models">
+      <p class="page-sub">
+        Choose which locally logged-in assistants appear in the Codex model picker.
+        Each runs through its own CLI on its own subscription. Where a vendor offers
+        reasoning levels, one entry covers them all — pick the level in Codex.
+      </p>
+
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Filter models" autocomplete="off" aria-label="Filter models">
+        <button id="save" class="primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+          Save
+        </button>
+        <button id="update" title="Ask every vendor what models it offers today">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          Update
+        </button>
+        <button id="stoptest" hidden title="Stop testing now and kill anything in flight">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          Stop testing
+        </button>
+        <button id="testall" title="Probe every model in this provider list">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Test all
+        </button>
+        <button id="apply">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>
+          Apply to Codex
+        </button>
+      </div>
+
+      <div id="list"></div>
+      <pre class="out" id="out" hidden></pre>
+    </section>
+
+    <section class="view" id="view-mode" hidden>
+      <p class="page-sub">
+        <strong>All models</strong> puts every logged-in assistant <em>and</em> the GPT models
+        in one picker. GPT is relayed to OpenAI byte-for-byte, so it stays fully native —
+        real streaming, real tool calls, real diffs — on your ChatGPT subscription.
+        <strong>Native GPT</strong> takes the bridge out of the GPT path entirely and leaves
+        the assistants to the terminal. Terminal profiles work in either mode.
+      </p>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Extra models in Codex</h2>
+          <div class="spacer"></div>
+          <span class="badge" id="enabled-badge">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="toolbar" style="margin:0 0 10px">
+            <label class="switch">
+              <input type="checkbox" id="master">
+              <span class="track"></span>
+              <span id="master-label">Bridge on</span>
+            </label>
+          </div>
+          <p class="page-sub" style="margin:0">
+            Off returns Codex to exactly the stock state it was in before any of this:
+            no custom provider, no custom catalog, none of our profile files, and the
+            service stopped. Your own default model is kept. Turning it back on restores
+            everything. Quit and reopen the app after either.
+          </p>
+          <pre class="out" id="master-out" hidden style="margin-top:12px"></pre>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          After switching, <strong>quit and reopen the Codex app</strong> — it reads config only at
+          launch. Then start a <strong>new conversation</strong>: Codex remembers the model per
+          conversation, so existing threads keep the model they were created with.
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>App mode</h2></div>
+        <div class="panel-body">
+          <div class="toolbar" style="margin:0">
+            <div class="segmented" role="group" aria-label="App mode">
+              <button id="mode-gpt" aria-pressed="false">Native GPT</button>
+              <button id="mode-assist" aria-pressed="false">All models</button>
+            </div>
+            <div class="field">
+              <label for="mode-default">Default model</label>
+              <select id="mode-default"></select>
+            </div>
+            <div class="spacer"></div>
+            <button id="mode-save" class="primary">Apply mode</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Terminal, either mode</h2></div>
+        <div class="panel-body" id="profile-list"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-usage" hidden>
+      <p class="page-sub">
+        What each subscription reports, and what this bridge has driven through it.
+        These are different numbers — the vendor figure is your real quota; the
+        bridge figure counts only traffic that went through here.
+      </p>
+
+      <div class="toolbar">
+        <div class="spacer"></div>
+        <button class="ghost xs" id="usage-refresh">Refresh</button>
+        <button class="ghost xs" id="usage-reset">Reset bridge counters</button>
+      </div>
+
+      <div id="usage-body"><div class="panel"><div class="empty">Loading.</div></div></div>
+    </section>
+
+    <section class="view" id="view-service" hidden>
+      <p class="page-sub">The bridge only needs to run while you are using a routed model.</p>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Recent activity</h2>
+          <div class="spacer"></div>
+          <button class="ghost xs" id="refresh-logs">Refresh</button>
+        </div>
+        <div class="panel-body"><pre class="out" id="logs">Loading.</pre></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Control</h2></div>
+        <div class="panel-body">
+          <p class="page-sub" style="margin:0 0 12px">Run these in a terminal:</p>
+          <pre class="out">bridgectl start | stop | restart | status
+bridgectl logs 40
+bridgectl mode gpt | assistants
+bridgectl enable-autostart      # launch at login
+uninstall --dry-run             # preview full rollback</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+$('#foot').textContent = location.host;
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let state = null, mode = null, pendingMode = null;
+
+function toast(msg, ms = 3200) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+const TITLES = { models: 'Models', mode: 'Codex app', usage: 'Usage', service: 'Service' };
+function show(view) {
+  document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== 'view-' + view; });
+  document.querySelectorAll('.nav-item').forEach(b =>
+    b.setAttribute('aria-current', b.dataset.view === view ? 'page' : 'false'));
+  $('#page-title').textContent = TITLES[view];
+  if (view === 'service') loadLogs();
+  if (view === 'usage') loadUsage();
+  if (view === 'mode') loadEnabled();
+}
+document.querySelectorAll('.nav-item').forEach(b =>
+  b.addEventListener('click', () => show(b.dataset.view)));
+
+function render() {
+  const q = $('#q').value.trim().toLowerCase();
+  const html = state.providers.map(p => {
+    const rows = p.models.filter(m =>
+      !q || m.label.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+    if (!rows.length) return '';
+    const on = p.models.filter(m => m.enabled).length;
+    return '<section class="panel">' +
+      '<div class="panel-head">' +
+        '<h2>' + esc(p.display_name) + '</h2>' +
+        '<span class="badge ' + (p.billing.indexOf('free') === 0 ? 'info' : '') + '">' + esc(p.billing) + '</span>' +
+        '<div class="spacer"></div>' +
+        '<span class="badge">' + on + ' of ' + p.models.length + ' shown</span>' +
+        (p.models.filter(m => m.unavailable).length
+          ? '<span class="badge warn">' + p.models.filter(m => m.unavailable).length + ' unavailable</span>'
+          : '') +
+      '</div>' +
+      rows.map(m => {
+        const id = 'c-' + p.provider + '-' + m.id;
+        const pills = (m.efforts || []).map(e => '<span class="pill">' + esc(e) + '</span>').join('') +
+                      (m.fast ? '<span class="pill">fast</span>' : '');
+        const un = m.unavailable;
+        return '<div class="row' + (un ? ' unavailable' : '') + '">' +
+          '<input type="checkbox" id="' + esc(id) + '" data-p="' + esc(p.provider) + '" data-m="' + esc(m.id) + '"' +
+            (m.enabled ? ' checked' : '') + ' aria-label="Show ' + esc(m.label) + ' in Codex">' +
+          '<label class="row-label" for="' + esc(id) + '">' +
+            '<span class="row-name">' + esc(m.label) + '</span>' +
+            '<span class="row-meta">' + esc(m.slug) + '</span>' +
+          '</label>' +
+          '<span class="row-efforts">' + (un
+             ? '<span class="badge warn" title="' + esc(un) + '">' + esc(un) + '</span>'
+             : pills) + '</span>' +
+          '<span class="result" id="r-' + esc(m.slug) + '"></span>' +
+          '<button class="ghost xs" data-test="' + esc(m.slug) + '">Test</button>' +
+        '</div>';
+      }).join('') +
+    '</section>';
+  }).join('');
+  $('#list').innerHTML = html ||
+    '<div class="panel"><div class="empty">No models match that filter. Clear it to see every provider.</div></div>';
+}
+
+function collect() {
+  const sel = {};
+  state.providers.forEach(p => { sel[p.provider] = []; });
+  document.querySelectorAll('#list input[type=checkbox]').forEach(cb => {
+    if (cb.checked) sel[cb.dataset.p].push(cb.dataset.m);
+  });
+  // Rows hidden by the current filter keep whatever they were saved as.
+  state.providers.forEach(p => p.models.forEach(m => {
+    if (m.enabled && !document.getElementById('c-' + p.provider + '-' + m.id))
+      sel[p.provider].push(m.id);
+  }));
+  return sel;
+}
+
+async function load() {
+  state = await (await fetch('/api/state')).json();
+  render();
+  const enabled = state.providers.flatMap(p => p.models.filter(m => m.enabled));
+  $('#status-text').textContent = enabled.length + ' model' + (enabled.length === 1 ? '' : 's') + ' enabled';
+  $('#status-badge').className = 'badge ok';
+  $('#profile-list').innerHTML = enabled.length
+    ? '<pre class="out">' + enabled.map(m => 'codex --profile ' + esc(m.profile || m.slug)).join('\n') + '</pre>'
+    : '<div class="empty">Nothing enabled yet. Turn a model on under Models.</div>';
+}
+
+$('#q').addEventListener('input', render);
+
+document.addEventListener('click', async e => {
+  const slug = e.target.dataset && e.target.dataset.test;
+  if (!slug) return;
+  const cell = document.getElementById('r-' + slug);
+  const t0 = Date.now();
+  e.target.disabled = true;
+  cell.className = 'result';
+  cell.textContent = 'running';
+  try {
+    const r = await (await fetch('/v1/probe-any', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: slug })
+    })).json();
+    cell.className = 'result ' + (r.ok ? 'ok' : 'bad');
+    cell.textContent = r.ok ? ((Date.now() - t0) / 1000).toFixed(1) + 's' : 'failed';
+    if (!r.ok) toast(slug + ': ' + (r.error || r.reply || 'no reply'), 9000);
+  } catch (err) {
+    cell.className = 'result bad';
+    cell.textContent = 'error';
+    toast(String(err), 6000);
+  }
+  e.target.disabled = false;
+});
+
+async function runTest(slug, btn) {
+  const cell = document.getElementById('r-' + slug);
+  if (!cell) return null;
+  const t0 = Date.now();
+  if (btn) btn.disabled = true;
+  cell.className = 'result';
+  cell.textContent = 'running';
+  let r = null;
+  try {
+    await fetch('/api/test/start', { method: 'POST' }).catch(() => {});
+    r = await (await fetch('/v1/probe-any', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: slug })
+    })).json();
+    cell.className = 'result ' + (r.ok ? 'ok' : 'bad');
+    cell.textContent = r.ok ? ((Date.now() - t0) / 1000).toFixed(1) + 's' : 'failed';
+    if (!r.ok) cell.title = r.error || r.reply || 'no reply';
+  } catch (err) {
+    cell.className = 'result bad';
+    cell.textContent = 'error';
+    cell.title = String(err);
+  }
+  if (btn) btn.disabled = false;
+  return r;
+}
+
+let testingStopped = false;
+
+async function stopTesting() {
+  testingStopped = true;
+  try {
+    const r = await (await fetch('/api/test/stop', { method: 'POST' })).json();
+    toast(r.killed
+      ? `Testing stopped — ${r.killed} call${r.killed === 1 ? '' : 's'} killed.`
+      : 'Testing stopped.', 5000);
+  } catch (err) { toast('Stop failed: ' + err, 5000); }
+  $('#stoptest').hidden = true;
+  $('#testall').disabled = false;
+  $('#testall').textContent = 'Test all';
+}
+
+$('#stoptest').addEventListener('click', stopTesting);
+
+$('#testall').addEventListener('click', async () => {
+  const btn = $('#testall');
+  const slugs = [...document.querySelectorAll('[data-test]')].map(b => b.dataset.test);
+  testingStopped = false;
+  await fetch('/api/test/start', { method: 'POST' }).catch(() => {});
+  btn.disabled = true;
+  $('#stoptest').hidden = false;
+  let done = 0, failed = 0;
+  for (const slug of slugs) {
+    if (testingStopped) break;
+    const r = await runTest(slug, null);   // one at a time, on purpose
+    if (r && r.cancelled) break;
+    done++;
+    if (!r || !r.ok) failed++;
+    btn.textContent = `Testing ${done}/${slugs.length}`;
+  }
+  $('#stoptest').hidden = true;
+  btn.textContent = 'Test all';
+  btn.disabled = false;
+  if (!testingStopped) {
+    toast(`${done - failed} of ${done} replied. Hover a red result for the reason.`, 8000);
+  }
+});
+
+$('#update').addEventListener('click', async () => {
+  const b = $('#update');
+  b.disabled = true; b.textContent = 'Scanning…';
+  try {
+    const r = await (await fetch('/api/refresh', { method: 'POST' })).json();
+    $('#out').hidden = false;
+    $('#out').textContent = r.output || 'No output.';
+    toast(r.ok
+      ? 'Vendors re-scanned. New models arrive switched off — and availability marks were cleared, so run "Test all" again.'
+      : 'Update failed — see the output.', 9000);
+    await load();
+  } catch (err) { toast('Update failed: ' + err, 6000); }
+  b.disabled = false; b.textContent = 'Update';
+});
+
+$('#save').addEventListener('click', async () => {
+  const b = $('#save'); b.disabled = true;
+  try {
+    const r = await (await fetch('/api/state', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selections: collect() })
+    })).json();
+    toast('Saved. ' + r.enabled.length + ' enabled — press "Apply to Codex" to update the picker.');
+    await load(); await loadMode();
+  } catch (err) { toast('Save failed: ' + err, 6000); }
+  b.disabled = false;
+});
+
+$('#apply').addEventListener('click', async () => {
+  const b = $('#apply'); b.disabled = true;
+  try {
+    const r = await (await fetch('/api/apply', { method: 'POST' })).json();
+    $('#out').hidden = false;
+    $('#out').textContent = r.output || 'No output.';
+    toast(r.ok ? 'Catalog written. Quit and reopen the Codex app.'
+               : 'Apply failed — see the output below.', 6000);
+  } catch (err) { toast('Apply failed: ' + err, 6000); }
+  b.disabled = false;
+});
+
+async function loadEnabled() {
+  try {
+    const e = await (await fetch('/api/enabled')).json();
+    const on = e.bridge === 'on';
+    $('#master').checked = on;
+    $('#master-label').textContent = on ? 'Bridge on' : 'Bridge off — Codex is stock';
+    $('#enabled-badge').textContent = on
+      ? (e.relay_native_GPT === 'on' ? 'on · GPT native' : 'on')
+      : 'off · stock Codex';
+    $('#enabled-badge').className = 'badge ' + (on ? 'ok' : '');
+    document.querySelectorAll('#mode-gpt,#mode-assist,#mode-save,#mode-default')
+      .forEach(el => el.disabled = !on);
+  } catch (err) { toast('Could not read bridge state: ' + err, 6000); }
+}
+
+$('#master').addEventListener('change', async e => {
+  const want = e.target.checked;
+  e.target.disabled = true;
+  $('#master-label').textContent = want ? 'Turning on…' : 'Turning off…';
+  try {
+    const r = await (await fetch('/api/enabled', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: want })
+    })).json();
+    $('#master-out').hidden = false;
+    $('#master-out').textContent = r.output || '(no output)';
+    toast(r.ok
+      ? (want ? 'Bridge on. Quit and reopen Codex.'
+              : 'Codex is back to stock. Quit and reopen it.')
+      : 'That did not work — see the output.', 7000);
+  } catch (err) {
+    // Turning off stops this very server, so the reply never arrives. That is
+    // the expected path, not a failure.
+    if (!want) {
+      $('#master-out').hidden = false;
+      $('#master-out').textContent =
+        'Bridge off. Codex is back to its stock state and this dashboard has stopped.\n' +
+        'Quit and reopen Codex. To bring it back, run:  bridgectl on';
+      $('#master-label').textContent = 'Bridge off — Codex is stock';
+      $('#enabled-badge').textContent = 'off · stock Codex';
+      $('#enabled-badge').className = 'badge';
+      $('#master').checked = false;
+      toast('Codex is back to stock. This dashboard is now offline — run "bridgectl on" to return.', 9000);
+      e.target.disabled = false;
+      return;
+    }
+    toast('Failed: ' + err, 6000);
+  }
+  e.target.disabled = false;
+  await loadEnabled();
+});
+
+async function loadMode() {
+  mode = await (await fetch('/api/mode')).json();
+  const assist = mode.mode === 'assistants';
+  $('#mode-badge').textContent = assist ? 'all models' : 'native GPT';
+  $('#mode-badge').className = 'badge ' + (assist ? 'warn' : '');
+  $('#mode-gpt').setAttribute('aria-pressed', String(!assist));
+  $('#mode-assist').setAttribute('aria-pressed', String(assist));
+  const enabled = state.providers.flatMap(p => p.models.filter(m => m.enabled).map(m => m.slug));
+  $('#mode-default').innerHTML = enabled.map(s =>
+    '<option value="' + esc(s) + '"' + (s === mode.default_model ? ' selected' : '') + '>' + esc(s) + '</option>'
+  ).join('') || '<option value="">nothing enabled</option>';
+  $('#mode-default').disabled = !enabled.length;
+  pendingMode = null;
+}
+
+$('#mode-gpt').addEventListener('click', () => {
+  pendingMode = 'gpt';
+  $('#mode-gpt').setAttribute('aria-pressed', 'true');
+  $('#mode-assist').setAttribute('aria-pressed', 'false');
+});
+$('#mode-assist').addEventListener('click', () => {
+  pendingMode = 'assistants';
+  $('#mode-assist').setAttribute('aria-pressed', 'true');
+  $('#mode-gpt').setAttribute('aria-pressed', 'false');
+});
+
+$('#mode-save').addEventListener('click', async () => {
+  const target = pendingMode || (mode && mode.mode) || 'gpt';
+  const b = $('#mode-save'); b.disabled = true;
+  try {
+    const body = { mode: target };
+    if (target === 'assistants') body.default_model = $('#mode-default').value;
+    const r = await (await fetch('/api/mode', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })).json();
+    toast(r.ok ? 'Mode applied. Quit and reopen Codex, then start a new conversation.'
+               : 'Mode change failed.', 7000);
+    await loadMode();
+  } catch (err) { toast('Mode change failed: ' + err, 6000); }
+  b.disabled = false;
+});
+
+function fmtSecs(s) {
+  if (s < 60) return s.toFixed(0) + 's';
+  if (s < 3600) return (s / 60).toFixed(1) + 'm';
+  return (s / 3600).toFixed(1) + 'h';
+}
+function fmtWhen(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000), now = Date.now() / 1000;
+  const mins = Math.round((now - ts) / 60);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  if (mins < 1440) return Math.round(mins / 60) + 'h ago';
+  return d.toLocaleDateString();
+}
+function fmtUntil(ts) {
+  const n = Number(ts);
+  if (!n) return '';
+  const hrs = (n - Date.now() / 1000) / 3600;
+  if (hrs <= 0) return 'resets now';
+  if (hrs < 48) return 'resets in ' + hrs.toFixed(0) + 'h';
+  return 'resets in ' + (hrs / 24).toFixed(0) + 'd';
+}
+
+let usageTimer = null;
+
+function tickCountdowns() {
+  const now = Date.now() / 1000;
+  document.querySelectorAll('[data-reset]').forEach(el => {
+    const t = Number(el.dataset.reset);
+    if (!t) { el.textContent = 'no reset time'; return; }
+    let d = Math.max(0, Math.round(t - now));
+    if (d === 0) { el.textContent = 'resetting now'; return; }
+    const days = Math.floor(d / 86400); d -= days * 86400;
+    const h = Math.floor(d / 3600); d -= h * 3600;
+    const m = Math.floor(d / 60); const sec = d - m * 60;
+    const pad = n => String(n).padStart(2, '0');
+    el.textContent = 'resets in ' + (days ? days + 'd ' : '') +
+      pad(h) + ':' + pad(m) + ':' + pad(sec);
+  });
+}
+
+function meterRow(w) {
+  const pct = Math.max(0, Math.min(100, w.used_percent));
+  const cls = pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : '';
+  if (w.stale) {
+    // The window already rolled over, so the cached number is history.
+    return '<div class="row unavailable">' +
+      '<span class="row-label" style="flex:0 0 210px">' +
+        '<span class="row-name">' + esc(w.name) + '</span>' +
+        '<span class="row-meta">window already reset — figure is out of date</span>' +
+      '</span>' +
+      '<span class="meter"><i style="width:0%"></i></span>' +
+      '<span class="badge warn">stale</span>' +
+    '</div>';
+  }
+  return '<div class="row">' +
+    '<span class="row-label" style="flex:0 0 210px">' +
+      '<span class="row-name">' + esc(w.name) + '</span>' +
+      '<span class="row-meta" data-reset="' + (w.resets_at || '') + '">—</span>' +
+    '</span>' +
+    '<span class="meter"><i class="' + cls + '" style="width:' + pct + '%"></i></span>' +
+    '<span class="num" style="min-width:74px;text-align:right">' + pct.toFixed(2) + '%</span>' +
+    (w.locked ? '<span class="badge bad">' + esc(w.locked) + '</span>' : '') +
+  '</div>';
+}
+
+const PROVIDER_ORDER = ['codex', 'claude', 'cursor', 'grok', 'muse', 'opencode'];
+
+async function loadUsage() {
+  const el = $('#usage-body');
+  try {
+    const u = await (await fetch('/api/usage')).json();
+    const meta = {};
+    (state ? state.providers : []).forEach(p =>
+      meta[p.provider] = { name: p.display_name, billing: p.billing });
+    meta.codex = meta.codex || { name: 'OpenAI', billing: 'ChatGPT subscription' };
+
+    const keys = [...new Set([...PROVIDER_ORDER,
+      ...Object.keys(u.providers || {}), ...Object.keys(u.quotas || {})])];
+
+    let html = '';
+    for (const key of keys) {
+      const q = (u.quotas || {})[key];
+      const drove = (u.providers || {})[key];
+      if (!q && !drove && key !== 'codex') continue;
+      const m = meta[key] || { name: key, billing: '' };
+
+      html += '<section class="panel"><div class="panel-head">' +
+        '<h2>' + esc(m.name) + '</h2>' +
+        (m.billing ? '<span class="chip">' + esc(m.billing) + '</span>' : '') +
+        '<div class="spacer"></div>' +
+        (q ? '<span class="badge ok">quota reported</span>' +
+             '<span class="badge">as of ' + esc(fmtWhen(q.captured_at)) + '</span>'
+           : '<span class="badge">no quota reported</span>') +
+        '</div>';
+
+      if (q) {
+        html += q.windows.map(meterRow).join('');
+        if (q.note) html += '<div class="panel-body" style="padding-top:10px">' +
+          '<span class="row-meta">' + esc(q.note) + '</span></div>';
+      } else {
+        html += '<div class="panel-body"><span class="row-meta">' +
+          esc(m.name) + ' does not publish remaining quota through its CLI, so there is ' +
+          'no percentage to show. Only what the bridge drove appears below.' +
+          '</span></div>';
+      }
+
+      if (drove) {
+        html += '<div class="row" style="background:var(--surface-2)">' +
+          '<span class="row-label" style="flex:0 0 210px"><span class="row-name">' +
+            'Driven through the bridge</span><span class="row-meta">not your total use</span></span>' +
+          '<span class="num">' + drove.calls + ' call' + (drove.calls === 1 ? '' : 's') + '</span>' +
+          (drove.failed ? '<span class="badge warn">' + drove.failed + ' failed</span>' : '') +
+          (drove.tokens ? '<span class="num">' + (drove.tokens / 1000).toFixed(1) + 'K tok</span>' : '') +
+          (drove.cost_usd ? '<span class="badge" title="API list price for comparison. On a subscription this is not billed.">≈ $' +
+             drove.cost_usd.toFixed(2) + ' list</span>' : '') +
+          '<span class="num">' + esc(fmtSecs(drove.seconds)) + '</span>' +
+        '</div>';
+      }
+      html += '</section>';
+    }
+
+    const oc = u.opencode_stats;
+    if (oc) {
+      html += '<section class="panel"><div class="panel-head"><h2>OpenCode totals</h2>' +
+        '<span class="badge">reported by OpenCode</span><div class="spacer"></div>' +
+        '<span class="badge info">free tier</span></div>' +
+        '<div class="panel-body"><div class="kv">' +
+        Object.entries(oc).map(([k, v]) =>
+          '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('') +
+        '</div></div></section>';
+    }
+
+    html += '<div class="note"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div>' +
+      'Percentages are shown to two decimals but are only as precise as the vendor sends them — ' +
+      'OpenAI and Anthropic both report whole percent today, so the decimals will read .00 until ' +
+      'they send finer values. Countdowns are computed from the exact reset timestamp each vendor gives, ' +
+      'so those are accurate to the second. Cursor, Grok and Muse publish no quota at all through their CLIs.' +
+      '</div></div>';
+
+    el.innerHTML = html;
+    tickCountdowns();
+    if (usageTimer) clearInterval(usageTimer);
+    usageTimer = setInterval(tickCountdowns, 1000);
+  } catch (err) {
+    el.innerHTML = '<div class="panel"><div class="empty">Could not load usage: ' + esc(String(err)) + '</div></div>';
+  }
+}
+
+$('#usage-refresh').addEventListener('click', loadUsage);
+$('#usage-reset').addEventListener('click', async () => {
+  await fetch('/api/usage/reset', { method: 'POST' });
+  toast('Bridge counters reset. Vendor-reported figures are unaffected.');
+  loadUsage();
+});
+
+async function loadLogs() {
+  try {
+    const r = await (await fetch('/api/logs')).json();
+    $('#logs').textContent = r.lines.length ? r.lines.slice(-60).join('\n') : 'No activity yet.';
+  } catch (err) {
+    $('#logs').textContent = 'Could not read the log: ' + err;
+  }
+}
+$('#refresh-logs').addEventListener('click', loadLogs);
+
+load().then(loadMode).then(loadEnabled).catch(err => {
+  $('#status-badge').className = 'badge bad';
+  $('#status-text').textContent = 'bridge unreachable';
+  toast('Could not reach the bridge: ' + err, 8000);
+});
+</script>
+</body>
+</html>

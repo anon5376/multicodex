@@ -1,0 +1,107 @@
+#!/bin/bash
+# bridgectl — start/stop/inspect the Codex subscription bridge.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PID_FILE="$ROOT/logs/bridge.pid"
+LOG="$ROOT/logs/bridge.log"
+PORT=$(python3 -c "import json;print(json.load(open('$ROOT/etc/providers.json'))['port'])")
+PLIST="$HOME/Library/LaunchAgents/com.local.codex-subscription-bridge.plist"
+
+listening() { curl -fsS -m 1 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; }
+
+running_pid() {
+  [ -f "$PID_FILE" ] || return 1
+  local p; p=$(cat "$PID_FILE" 2>/dev/null)
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null && echo "$p"
+}
+
+case "${1:-status}" in
+  start)
+    if listening; then echo "already running on port $PORT"; exit 0; fi
+    if [ -f "$PLIST" ]; then
+      # Managed by launchd: let it own the process so KeepAlive behaves.
+      # A load immediately after an unload can be dropped, so verify and retry.
+      launchctl load "$PLIST" 2>/dev/null
+      for _ in $(seq 1 12); do listening && break; sleep 0.25; done
+      if ! listening; then sleep 1; launchctl load "$PLIST" 2>/dev/null; fi
+    else
+      nohup python3 "$ROOT/bin/bridge.py" >>"$LOG" 2>&1 &
+      echo $! > "$PID_FILE"
+    fi
+    for _ in $(seq 1 40); do
+      if listening; then
+        if [ -f "$PID_FILE" ]; then echo "started (pid $(cat "$PID_FILE")) on http://127.0.0.1:$PORT"
+        else echo "started (managed by launchd) on http://127.0.0.1:$PORT"; fi
+        exit 0
+      fi
+      sleep 0.25
+    done
+    echo "failed to become healthy; last log lines:"; tail -15 "$LOG"; exit 1
+    ;;
+  stop)
+    stopped=0
+    if [ -f "$PLIST" ]; then
+      # Unload, or KeepAlive would restart it immediately. The agent is loaded
+      # again at the next login, so autostart stays enabled.
+      launchctl unload "$PLIST" 2>/dev/null && stopped=1
+    fi
+    if p=$(running_pid); then kill "$p" 2>/dev/null; sleep 0.5
+      kill -0 "$p" 2>/dev/null && kill -9 "$p" 2>/dev/null
+      rm -f "$PID_FILE"; stopped=1
+    fi
+    for _ in $(seq 1 20); do listening || break; sleep 0.25; done
+    [ "$stopped" = 1 ] && echo "stopped" || echo "not running"
+    ;;
+  restart) "$0" stop >/dev/null; sleep 1; exec "$0" start ;;
+  status)
+    if listening; then
+      p=$(running_pid) || p="managed by launchd"
+      echo "running ($p) on http://127.0.0.1:$PORT"
+      curl -fsS -m 3 "http://127.0.0.1:$PORT/healthz" 2>/dev/null | python3 -m json.tool 2>/dev/null
+    else echo "not running"; fi
+    [ -f "$PLIST" ] && echo "autostart: ENABLED ($PLIST)" || echo "autostart: disabled"
+    python3 "$ROOT/bin/set-enabled.py" status
+    ;;
+  logs) tail -n "${2:-40}" "$LOG" ;;
+  mode) shift; python3 "$ROOT/bin/set-mode.py" "${1:-status}" "${2:-}" ;;
+  on|off) python3 "$ROOT/bin/set-enabled.py" "$1" ;;
+  default)
+    if [ -z "${2:-}" ]; then
+      python3 -c "
+import os,sys; sys.path.insert(0,'$ROOT/bin')
+import set_mode_helpers as H
+print('default model:', H.current_default_model(H.read_config()))"
+    else
+      python3 -c "
+import os,sys; sys.path.insert(0,'$ROOT/bin')
+import set_mode_helpers as H
+t=H.read_config(); before=H.current_default_model(t)
+H.write_config(H.set_default_model(t,'$2'))
+print('default model: %s -> %s' % (before,'$2'))
+print('Quit and reopen the Codex app.')"
+    fi ;;
+  enable-autostart)
+    # Hand the running process over to launchd rather than racing it.
+    if p=$(running_pid); then kill "$p" 2>/dev/null; rm -f "$PID_FILE"; sleep 1; fi
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$PLIST" <<PEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.local.codex-subscription-bridge</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string><string>$ROOT/bin/bridge.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$LOG</string>
+  <key>StandardErrorPath</key><string>$LOG</string>
+</dict></plist>
+PEOF
+    launchctl unload "$PLIST" 2>/dev/null
+    launchctl load "$PLIST" && echo "autostart enabled" ;;
+  disable-autostart)
+    [ -f "$PLIST" ] && launchctl unload "$PLIST" 2>/dev/null; rm -f "$PLIST"
+    echo "autostart disabled" ;;
+  *) echo "usage: bridgectl {on|off|default [model]|start|stop|restart|status|logs [n]|mode [gpt|assistants|status] [model]|enable-autostart|disable-autostart}"; exit 2 ;;
+esac
